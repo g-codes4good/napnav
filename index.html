@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NapNav — Smart Flight Planning for Families</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">✈️</div>
+        <div>
+          <h1>NapNav</h1>
+          <p>Smart flight planning for traveling families</p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- Progress Bar -->
+    <div class="progress-container">
+      <div class="progress-steps">
+        <div class="progress-step active" data-step="1">
+          <div class="step-circle">1</div>
+          <span>Children</span>
+        </div>
+        <div class="progress-line"></div>
+        <div class="progress-step" data-step="2">
+          <div class="step-circle">2</div>
+          <span>Trip</span>
+        </div>
+        <div class="progress-line"></div>
+        <div class="progress-step" data-step="3">
+          <div class="step-circle">3</div>
+          <span>Departure</span>
+        </div>
+        <div class="progress-line"></div>
+        <div class="progress-step" data-step="4">
+          <div class="step-circle">4</div>
+          <span>Arrival</span>
+        </div>
+        <div class="progress-line"></div>
+        <div class="progress-step" data-step="5">
+          <div class="step-circle">5</div>
+          <span>Duration</span>
+        </div>
+      </div>
+    </div>
+
+    <form id="napnav-form" onsubmit="return false;">
+
+      <!-- ============ STEP 1: CHILDREN ============ -->
+      <section class="step-section" id="step-1">
+        <div class="section-header">
+          <h2>Your Child(ren)</h2>
+          <p>We'll use your child's age and sleep schedule to find the best flight windows.</p>
+        </div>
+
+        <div class="form-card">
+          <label class="field-label">How many children are traveling?</label>
+          <div class="btn-group" id="child-count-btns">
+            <button type="button" class="count-btn active" data-count="1">1</button>
+            <button type="button" class="count-btn" data-count="2">2</button>
+            <button type="button" class="count-btn" data-count="3">3</button>
+          </div>
+        </div>
+
+        <div id="children-container">
+          <!-- Generated dynamically by script.js -->
+        </div>
+
+        <div class="step-nav">
+          <div></div>
+          <button type="button" class="btn-primary" onclick="nextStep()">Next: Trip Details →</button>
+        </div>
+      </section>
+
+      <!-- ============ STEP 2: TRIP ============ -->
+      <section class="step-section hidden" id="step-2">
+        <div class="section-header">
+          <h2>Trip Details</h2>
+          <p>Enter your airports — we'll automatically calculate the time zone difference.</p>
+        </div>
+
+        <div class="form-card">
+          <div class="field-row">
+            <div class="field-group">
+              <label class="field-label">Departure Airport</label>
+              <div class="airport-input-wrap">
+                <input type="text" class="field-input" id="dep-airport"
+                  placeholder="e.g. ATL or Atlanta"
+                  autocomplete="off">
+                <div class="airport-dropdown hidden" id="dep-dropdown"></div>
+              </div>
+              <div class="airport-status" id="dep-status"></div>
+            </div>
+            <div class="field-group">
+              <label class="field-label">Destination Airport</label>
+              <div class="airport-input-wrap">
+                <input type="text" class="field-input" id="arr-airport"
+                  placeholder="e.g. LAX or Los Angeles"
+                  autocomplete="off">
+                <div class="airport-dropdown hidden" id="arr-dropdown"></div>
+              </div>
+              <div class="airport-status" id="arr-status"></div>
+            </div>
+          </div>
+
+          <!-- Auto-computed TZ display -->
+          <div class="tz-display hidden" id="tz-display">
+            <div class="tz-row">
+              <div class="tz-city" id="tz-dep-info"></div>
+              <div class="tz-arrow">→</div>
+              <div class="tz-city" id="tz-arr-info"></div>
+            </div>
+            <div class="tz-result" id="tz-result-text"></div>
+            <div class="flight-est-row hidden" id="flight-est-row">
+              <span id="flight-est-text"></span>
+              <span class="flight-est-note">Assumes nonstop — adjust on the next screen if needed</span>
+            </div>
+          </div>
+
+          <div class="field-row" style="margin-top: 16px;">
+            <div class="field-group">
+              <label class="field-label">Departure Date</label>
+              <input type="date" class="field-input" id="dep-date">
+            </div>
+            <div class="field-group">
+              <label class="field-label">Return Date (optional)</label>
+              <input type="date" class="field-input" id="ret-date">
+            </div>
+          </div>
+
+          <div class="info-box">
+            <strong>Jet lag note:</strong> Traveling east is harder for children — their bodies resist staying up later.
+            Westward travel is easier. Expect roughly 1 day of adjustment per time zone crossed.
+          </div>
+        </div>
+
+        <div class="step-nav">
+          <button type="button" class="btn-secondary" onclick="prevStep()">← Back</button>
+          <button type="button" class="btn-primary" onclick="nextStep()">Next: Departure Day →</button>
+        </div>
+      </section>
+
+      <!-- ============ STEP 3: DEPARTURE LOGISTICS ============ -->
+      <section class="step-section hidden" id="step-3">
+        <div class="section-header">
+          <h2>Departure Day Logistics</h2>
+          <p>These details help us calculate your real "leave the house" time.</p>
+        </div>
+
+        <div class="form-card">
+          <div class="field-row">
+            <div class="field-group">
+              <label class="field-label">Travel time to airport</label>
+              <select class="field-input" id="drive-to-airport">
+                <option value="15">15 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="45" selected>45 minutes</option>
+                <option value="60">1 hour</option>
+                <option value="90">1.5 hours</option>
+                <option value="120">2+ hours</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label class="field-label">TSA PreCheck or Global Entry?</label>
+              <select class="field-input" id="tsa-precheck">
+                <option value="no" selected>No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <label class="field-label">Car seat on this trip?</label>
+              <select class="field-input" id="car-seat">
+                <option value="none">Not bringing one</option>
+                <option value="gate-check">Bringing — gate checking (free)</option>
+                <option value="plane">Bringing — using on plane (safest for infant sleep)</option>
+                <option value="checked">Bringing — checking with luggage</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label class="field-label">Stroller?</label>
+              <select class="field-input" id="stroller">
+                <option value="none">Not bringing one</option>
+                <option value="gate-check">Gate checking (adds ~15 min through security)</option>
+                <option value="checked">Checking with luggage</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Number of bags to check</label>
+            <select class="field-input" id="bags">
+              <option value="0">0 — carry-on only</option>
+              <option value="1">1 bag</option>
+              <option value="2" selected>2 bags</option>
+              <option value="3">3+ bags</option>
+            </select>
+          </div>
+
+          <div class="info-box">
+            <strong>With kids, always add extra buffer.</strong> TSA with strollers, car seats, formula, and liquids
+            takes significantly longer. We build in time for all of this automatically.
+          </div>
+        </div>
+
+        <div class="step-nav">
+          <button type="button" class="btn-secondary" onclick="prevStep()">← Back</button>
+          <button type="button" class="btn-primary" onclick="nextStep()">Next: Arrival →</button>
+        </div>
+      </section>
+
+      <!-- ============ STEP 4: ARRIVAL LOGISTICS ============ -->
+      <section class="step-section hidden" id="step-4">
+        <div class="section-header">
+          <h2>Arrival Logistics</h2>
+          <p>What happens after you land is just as important as the flight itself.</p>
+        </div>
+
+        <div class="form-card">
+          <div class="field-row">
+            <div class="field-group">
+              <label class="field-label">Ground transport from arrival airport</label>
+              <select class="field-input" id="arrival-transport">
+                <option value="rental">Rental car (~45 min pickup time)</option>
+                <option value="rideshare">Rideshare / taxi (~15 min wait)</option>
+                <option value="shuttle">Hotel shuttle (~20 min wait)</option>
+                <option value="own-car">Own car / pickup (no wait)</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label class="field-label">Drive time from airport to hotel/destination</label>
+              <select class="field-input" id="hotel-drive">
+                <option value="10">Under 15 minutes</option>
+                <option value="22">15–30 minutes</option>
+                <option value="45" selected>30–60 minutes</option>
+                <option value="75">1–1.5 hours</option>
+                <option value="105">1.5–2 hours</option>
+                <option value="150">2+ hours</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <label class="field-label">Pack-n-play / crib at destination?</label>
+              <select class="field-input" id="crib-available">
+                <option value="yes">Yes, hotel/host provides one</option>
+                <option value="no">No — bringing our own</option>
+                <option value="unknown">Unknown — need to confirm</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label class="field-label">Blackout curtains at destination?</label>
+              <select class="field-input" id="blackout-available">
+                <option value="yes">Yes</option>
+                <option value="no">No — bringing portable blackout</option>
+                <option value="unknown">Unknown — need to check</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="info-box">
+            <strong>Tip:</strong> Always call ahead to confirm the pack-n-play — many hotels have limited supply.
+            Request early check-in if arriving during nap time.
+          </div>
+        </div>
+
+        <div class="step-nav">
+          <button type="button" class="btn-secondary" onclick="prevStep()">← Back</button>
+          <button type="button" class="btn-primary" onclick="nextStep()">Next: Flight Duration →</button>
+        </div>
+      </section>
+
+      <!-- ============ STEP 5: FLIGHT DURATION ============ -->
+      <section class="step-section hidden" id="step-5">
+        <div class="section-header">
+          <h2>Confirm Flight Duration</h2>
+          <p>We've estimated your nonstop flight time from the airports you entered. Adjust below if you know a different duration or are flying with a connection.</p>
+        </div>
+
+        <div class="form-card">
+          <label class="field-label">Approximate Flight Duration</label>
+          <div class="duration-grid" id="duration-btns">
+            <button type="button" class="dur-btn" data-minutes="60">1h</button>
+            <button type="button" class="dur-btn" data-minutes="90">1h 30m</button>
+            <button type="button" class="dur-btn" data-minutes="120">2h</button>
+            <button type="button" class="dur-btn" data-minutes="150">2h 30m</button>
+            <button type="button" class="dur-btn" data-minutes="180">3h</button>
+            <button type="button" class="dur-btn" data-minutes="210">3h 30m</button>
+            <button type="button" class="dur-btn" data-minutes="240">4h</button>
+            <button type="button" class="dur-btn" data-minutes="300">5h</button>
+            <button type="button" class="dur-btn" data-minutes="360">6h</button>
+            <button type="button" class="dur-btn" data-minutes="420">7h</button>
+            <button type="button" class="dur-btn" data-minutes="480">8h</button>
+            <button type="button" class="dur-btn" data-minutes="600">10h</button>
+            <button type="button" class="dur-btn" data-minutes="720">12h</button>
+            <button type="button" class="dur-btn" data-minutes="900">15h+</button>
+          </div>
+          <div id="duration-selected" class="duration-selected-label hidden"></div>
+        </div>
+
+        <div class="form-card">
+          <label class="field-label">Are you open to a redeye / overnight flight?</label>
+          <div class="btn-group">
+            <button type="button" class="count-btn active" id="redeye-yes" onclick="setRedeye(true)">Yes</button>
+            <button type="button" class="count-btn" id="redeye-no" onclick="setRedeye(false)">No</button>
+          </div>
+          <p class="field-hint">Overnight flights departing near bedtime can be excellent for young children — they sleep through most of it.</p>
+        </div>
+
+        <div class="step-nav">
+          <button type="button" class="btn-secondary" onclick="prevStep()">← Back</button>
+          <button type="button" class="btn-analyze" onclick="runAnalysis()">Find My Best Flight Windows ✈️</button>
+        </div>
+      </section>
+
+    </form>
+
+    <!-- ============ RESULTS SECTION ============ -->
+    <section id="results-section" class="hidden">
+
+      <div class="results-header">
+        <h2>Your Best Flight Windows</h2>
+        <p id="results-subtitle"></p>
+      </div>
+
+      <div id="results-container">
+        <!-- Window result cards injected by JS -->
+      </div>
+
+      <!-- Explore All Times -->
+      <div class="form-card hidden" id="explore-section">
+        <h3>Explore All Departure Times</h3>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+          Click any time block to see the full analysis for that departure window. Green = great, yellow = fair, red = avoid.
+        </p>
+        <div class="heatmap-wrap">
+          <div class="heatmap-row" id="explore-heatmap"></div>
+          <div class="heatmap-labels" id="explore-labels"></div>
+        </div>
+        <div class="heatmap-legend">
+          <span class="legend-dot" style="background:#10B981"></span> Excellent (70+)
+          <span class="legend-dot" style="background:#34D399"></span> Good (55–69)
+          <span class="legend-dot" style="background:#F59E0B"></span> Fair (40–54)
+          <span class="legend-dot" style="background:#F97316"></span> Marginal (25–39)
+          <span class="legend-dot" style="background:#EF4444"></span> Avoid (&lt;25)
+        </div>
+        <div class="hidden" id="explore-detail-panel"></div>
+      </div>
+
+      <div class="form-card" id="checklist-card">
+        <h3>Pre-Trip Checklist</h3>
+        <div id="checklist-container"></div>
+      </div>
+
+      <div class="form-card" id="tips-card">
+        <h3>Expert Tips for Your Trip</h3>
+        <div id="tips-container"></div>
+      </div>
+
+      <div class="step-nav" style="margin-top: 24px;">
+        <button type="button" class="btn-secondary" onclick="startOver()">← Start Over</button>
+        <button type="button" class="btn-primary" onclick="window.print()">Print My Plan</button>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>NapNav — Built for traveling families. Sleep science based on AAP guidelines and pediatric sleep research.</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
