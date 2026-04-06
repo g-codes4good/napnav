@@ -504,6 +504,7 @@ function generateChildCard(index) {
         </div>
       </div>
       <div id="naps-container-${index}"></div>
+      <div id="schedule-confirm-${index}" class="schedule-confirm hidden"></div>
     </div>
     <div class="hidden" id="needs-section-${index}">
       <h4>Sleep Environment & Needs</h4>
@@ -577,6 +578,52 @@ function populateSleepDefaults(childIndex, ageGroup) {
       </div>`;
     napsContainer.appendChild(row);
   });
+
+  // Render the schedule confirmation summary and attach live update listeners
+  updateScheduleConfirm(childIndex);
+  ['child-wake', 'child-bed'].forEach(prefix => {
+    document.getElementById(`${prefix}-${childIndex}`)
+      ?.addEventListener('change', () => updateScheduleConfirm(childIndex));
+  });
+  napsContainer.querySelectorAll('input').forEach(input => {
+    input.addEventListener('change', () => updateScheduleConfirm(childIndex));
+  });
+  // Also update confirm when child's name changes
+  document.getElementById(`child-name-${childIndex}`)
+    ?.addEventListener('input', () => updateScheduleConfirm(childIndex));
+}
+
+function updateScheduleConfirm(childIndex) {
+  const confirmEl = document.getElementById(`schedule-confirm-${childIndex}`);
+  if (!confirmEl) return;
+
+  const name    = document.getElementById(`child-name-${childIndex}`)?.value.trim() || `Child ${childIndex + 1}`;
+  const wake    = document.getElementById(`child-wake-${childIndex}`)?.value || '07:00';
+  const bed     = document.getElementById(`child-bed-${childIndex}`)?.value  || '19:30';
+
+  const napSummaries = [];
+  let i = 0;
+  while (document.getElementById(`nap-${childIndex}-${i}-start`)) {
+    const start = document.getElementById(`nap-${childIndex}-${i}-start`).value;
+    const dur   = parseInt(document.getElementById(`nap-${childIndex}-${i}-duration`).value || '60');
+    const endMin = timeToMinutes(start) + dur;
+    napSummaries.push(`${minutesToTime(timeToMinutes(start))}–${minutesToTime(endMin)} (${dur}m)`);
+    i++;
+  }
+
+  const napLine = napSummaries.length
+    ? napSummaries.map((s, idx) => `<span class="sched-pill sched-nap">😴 Nap ${idx + 1}: ${s}</span>`).join('')
+    : `<span class="sched-pill sched-nonap">☀️ No regular naps</span>`;
+
+  confirmEl.innerHTML = `
+    <div class="schedule-confirm-header">NapNav will score using ${name}'s schedule:</div>
+    <div class="schedule-confirm-pills">
+      <span class="sched-pill sched-wake">🌅 Wake ${minutesToTime(timeToMinutes(wake))}</span>
+      ${napLine}
+      <span class="sched-pill sched-bed">🌙 Bed ${minutesToTime(timeToMinutes(bed))}</span>
+    </div>
+    <div class="schedule-confirm-note">If these times don't match ${name}'s actual routine, adjust the fields above — the recommendation will change.</div>`;
+  confirmEl.classList.remove('hidden');
 }
 
 function setupChildCountButtons() {
@@ -883,8 +930,24 @@ function parseISODurationMinutes(depISO, arrISO) {
   return Math.round((new Date(arrISO) - new Date(depISO)) / 60000);
 }
 
+// ============ SCORE CONTEXT ============
+function computeScoreContext(allWindows, bestScore) {
+  const scores = allWindows.map(w => w.score);
+  const sorted = [...scores].sort((a, b) => a - b);
+  const median  = sorted[Math.floor(sorted.length / 2)];
+  const max     = sorted[sorted.length - 1];
+  const pctBelow = Math.round(scores.filter(s => s < bestScore).length / scores.length * 100);
+
+  let routeVerdict;
+  if (max >= 70)       routeVerdict = 'Good windows exist for this route — your best pick is above the typical range.';
+  else if (max >= 50)  routeVerdict = 'This route has no standout windows. Your best pick is above average, but all options involve trade-offs.';
+  else                 routeVerdict = 'No strong windows exist for this route and schedule. All departure times involve significant trade-offs.';
+
+  return { median, max, pctBelow, routeVerdict };
+}
+
 // ============ HERO RECOMMENDATION CARD ============
-function buildHeroCard(ranked, data) {
+function buildHeroCard(ranked, data, scoreCtx) {
   const container = document.getElementById('hero-rec-container');
   if (!container) return;
   if (!ranked || !ranked.length) {
@@ -899,11 +962,15 @@ function buildHeroCard(ranked, data) {
 
   // If score is very low, show neutral fallback
   if (best.score < 30) {
+    const ctxLine = scoreCtx
+      ? `<div class="hero-rec-context">Best possible score for this route: ${scoreCtx.max}/100 · ${scoreCtx.routeVerdict}</div>`
+      : '';
     container.innerHTML = `
       <div class="hero-rec-card hero-rec-neutral">
         <div class="hero-rec-icon">✈️</div>
-        <div class="hero-rec-title">We weren't able to find a clearly optimal window</div>
-        <div class="hero-rec-body">See the full breakdown below for your best available options.</div>
+        <div class="hero-rec-title">No clearly optimal window for this trip</div>
+        <div class="hero-rec-body">See the full breakdown below — the compromise tips below the results will help you make the best of it.</div>
+        ${ctxLine}
       </div>`;
     return;
   }
@@ -933,6 +1000,10 @@ function buildHeroCard(ranked, data) {
 
   const destCity = arrA ? arrA.city.split(',')[0] : 'your destination';
 
+  const ctxLine = scoreCtx
+    ? `<div class="hero-rec-context">Score ${best.score}/100 · beats ${scoreCtx.pctBelow}% of departure windows · ${scoreCtx.routeVerdict}</div>`
+    : '';
+
   container.innerHTML = `
     <div class="hero-rec-card">
       <div class="hero-rec-icon">✈️</div>
@@ -941,6 +1012,7 @@ function buildHeroCard(ranked, data) {
         ${napContext}Expected arrival in ${destCity}: <strong>${arrLocalText} local time</strong> (${bodyClockText} body clock).
         ${data.tzDiffMinutes !== 0 ? `Their body is still on home time — plan accordingly on arrival day.` : `No timezone adjustment needed.`}
       </div>
+      ${ctxLine}
     </div>`;
 }
 
@@ -1304,8 +1376,9 @@ function renderResults(ranked, data, allWindows, liveFlights) {
   document.getElementById('results-subtitle').textContent =
     `${ranked.length} best departure windows for ${childNames} — ${route}`;
 
-  // Hero card
-  buildHeroCard(ranked, data);
+  // Hero card with score context
+  const scoreCtx = allWindows.length ? computeScoreContext(allWindows, ranked[0]?.score ?? 0) : null;
+  buildHeroCard(ranked, data, scoreCtx);
 
   // Scoring FAQ
   renderScoringFaq();

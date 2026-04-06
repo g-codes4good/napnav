@@ -1762,3 +1762,62 @@ footer p:last-child {
   opacity: 0.5;
   font-style: italic;
 }
+
+/* ============ SCHEDULE CONFIRMATION ============ */
+.schedule-confirm {
+  background: var(--primary-light);
+  border: 1.5px solid #99F6E4;
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin-top: 16px;
+}
+
+.schedule-confirm-header {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 10px;
+}
+
+.schedule-confirm-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.sched-pill {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.sched-wake  { background: #FEF9C3; color: #713F12; }
+.sched-nap   { background: #DBEAFE; color: #1E40AF; }
+.sched-bed   { background: #EDE9FE; color: #4C1D95; }
+.sched-nonap { background: var(--border); color: var(--text-muted); }
+
+.schedule-confirm-note {
+  font-size: 12px;
+  color: var(--primary-dark);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* ============ HERO CARD SCORE CONTEXT ============ */
+.hero-rec-context {
+  font-size: 12px;
+  color: #065F46;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #6EE7B7;
+  line-height: 1.5;
+}
+
+.hero-rec-neutral .hero-rec-context {
+  color: var(--text-muted);
+  border-top-color: var(--border);
+}
