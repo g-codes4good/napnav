@@ -1248,6 +1248,7 @@ async function runAnalysis() {
   document.getElementById('results-section').classList.remove('hidden');
   document.getElementById('napnav-form').classList.add('hidden');
   document.querySelector('.progress-container').classList.add('hidden');
+  document.querySelector('.intro-banner')?.classList.add('hidden');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   const resultsContainer = document.getElementById('results-container');
@@ -1726,6 +1727,7 @@ function startOver() {
   document.getElementById('results-section').classList.add('hidden');
   document.getElementById('napnav-form').classList.remove('hidden');
   document.querySelector('.progress-container').classList.remove('hidden');
+  document.querySelector('.intro-banner')?.classList.remove('hidden');
   document.getElementById('hero-rec-container').innerHTML = '';
   document.getElementById('tension-container').innerHTML  = '';
   const noticeEl = document.getElementById('live-flight-notice-container');
