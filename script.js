@@ -972,6 +972,22 @@ function renderScoringFaq() {
 
     <h4>A note on certainty:</h4>
     <p>Sleep science gives us the framework, but every child is different. NapNav gives you the best probabilistic answer — a well-informed starting point, not a guarantee.</p>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+
+    <h4>📚 Where the sleep data comes from</h4>
+    <p><strong>Age-based nap schedules:</strong> The default wake times, nap windows, and bedtimes are drawn from the American Academy of Pediatrics (AAP) recommended sleep durations by age (2016 guidelines) and are consistent with schedules described in widely used pediatric sleep references including <em>Healthy Sleep Habits, Happy Child</em> (Weissbluth) and <em>The Happy Sleeper</em> (Turgeon & Wright). These are typical schedules — your child's actual schedule, which you can edit, always takes priority.</p>
+
+    <p><strong>Jet lag model:</strong> The 1-day-of-adjustment-per-timezone-crossed rule comes from circadian biology research on the human suprachiasmatic nucleus (SCN) — the brain's master clock. Eastward travel is consistently harder because the body resists phase-advancing (staying up later) more than it resists phase-delaying (going to bed earlier). This is established in chronobiology literature and the underlying physiology is the same in children as in adults, though children often adjust faster.</p>
+
+    <p><strong>Bedtime timing sensitivity:</strong> The scoring penalties around arriving near or past bedtime reflect research on sleep pressure and homeostatic sleep drive — the longer a child is awake past their typical bedtime, the more dysregulated their behavior and the harder it becomes to initiate sleep in a new environment.</p>
+
+    <h4>✈️ Where the flight data comes from</h4>
+    <p>Live flight schedules are fetched from <strong>AviationStack</strong> (aviationstack.com), a real-time flight data API covering scheduled departures worldwide. Data is proxied through a Cloudflare serverless function to meet HTTPS security requirements. NapNav does not store your search queries or flight results.</p>
+    <p>If live data is unavailable for a route or date, NapNav falls back to scoring hypothetical departure windows across the full day — the scoring model is the same either way.</p>
+
+    <h4>⚖️ What this tool is and isn't</h4>
+    <p>NapNav is a planning aid, not medical advice. The sleep schedules are population-level averages — some children sleep more, less, or on very different schedules. If your child has a sleep disorder, medical condition, or works with a sleep consultant, defer to that guidance. The scores are designed to give you a better starting point than guessing, not to guarantee a smooth flight.</p>
   `;
 }
 

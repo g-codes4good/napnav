@@ -1728,3 +1728,37 @@ footer {
   flex-shrink: 0;
   margin-top: 1px;
 }
+
+/* ============ FOOTER SOURCES ============ */
+footer {
+  padding: 24px 20px;
+}
+
+footer p {
+  margin-bottom: 6px;
+}
+
+footer p:last-child {
+  margin-bottom: 0;
+}
+
+.footer-sources {
+  font-size: 12px;
+  opacity: 0.75;
+  line-height: 1.6;
+}
+
+.footer-sources a {
+  color: rgba(255,255,255,0.8);
+  text-decoration: underline;
+}
+
+.footer-sources a:hover {
+  color: white;
+}
+
+.footer-disclaimer {
+  font-size: 11px;
+  opacity: 0.5;
+  font-style: italic;
+}
