@@ -609,6 +609,8 @@ function goToStep(n) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+const STEP_LABELS = ['Children', 'Trip Details', 'Departure Day', 'Arrival', 'Flight Duration'];
+
 function updateProgressBar() {
   document.querySelectorAll('.progress-step').forEach(step => {
     const n = parseInt(step.dataset.step);
@@ -619,6 +621,11 @@ function updateProgressBar() {
   document.querySelectorAll('.progress-line').forEach((line, i) => {
     line.classList.toggle('completed', i + 1 < currentStep);
   });
+  // Mobile progress
+  const mobileText = document.getElementById('progress-mobile-text');
+  const mobileBarFill = document.getElementById('progress-mobile-bar-fill');
+  if (mobileText) mobileText.textContent = `Step ${currentStep} of 5 — ${STEP_LABELS[currentStep - 1]}`;
+  if (mobileBarFill) mobileBarFill.style.width = `${(currentStep / 5) * 100}%`;
 }
 
 // ============ DATA COLLECTION ============
@@ -699,6 +706,280 @@ function scoreLabel(score) {
   if (score >= 55) return { text: 'Good',        cls: 'good' };
   if (score >= 35) return { text: 'Fair',        cls: 'fair' };
   return             { text: 'Challenging', cls: 'poor' };
+}
+
+// ============ PLAIN-ENGLISH SUBLABEL ============
+function generateSublabel(score, positives, warnings) {
+  // Check specific conditions from warnings/positives
+  const warnTexts = warnings.map(w => w.text.toLowerCase());
+  const posTexts  = positives.map(p => p.text.toLowerCase());
+
+  if (warnTexts.some(t => t.includes('redeye') && t.includes('not preferred'))) return 'Redeye — avoid';
+  if (warnTexts.some(t => t.includes('mid-'))) return 'Disrupts nap';
+  if (warnTexts.some(t => t.includes('hotel arrival') && t.includes('past bedtime'))) return 'Late arrival — risky';
+  if (warnTexts.some(t => t.includes('hotel arrival') && t.includes('close to bedtime'))) return 'Arrives at bedtime';
+  if (warnTexts.some(t => t.includes('late-night hotel arrival'))) return 'Very late arrival';
+  if (warnTexts.some(t => t.includes('middle of the night home'))) return 'Leaves at midnight';
+  if (posTexts.some(t =>  t.includes('departs close to') && t.includes('bedtime'))) return 'Redeye-friendly';
+  if (posTexts.some(t =>  t.includes('aligns with') && t.includes('nap'))) return 'Strong nap overlap';
+  if (posTexts.some(t =>  t.includes('flight spans'))) return 'Nap in-flight';
+  if (posTexts.some(t =>  t.includes('flight covers full'))) return 'Full nap on flight';
+  if (warnTexts.some(t => t.includes('boards somewhat tired'))) return 'Boards tired';
+  if (score >= 70) return 'Excellent window';
+  if (score >= 55) return 'Good option';
+  if (score >= 40) return 'Fair option';
+  if (score >= 25) return 'Marginal';
+  return 'Difficult window';
+}
+
+// ============ MULTI-CHILD ANALYSIS ============
+function getAgeWeight(ageGroup) {
+  if (['0-3mo','3-6mo','6-9mo','9-12mo'].includes(ageGroup)) return 4;
+  if (['12-18mo','18-24mo','2-3yr'].includes(ageGroup))       return 3;
+  if (['3-4yr','4-5yr'].includes(ageGroup))                   return 2;
+  return 1;
+}
+
+function computeNapWindows(children) {
+  return children.map(child => {
+    if (!child.naps || !child.naps.length) return { child, napStart: null, napEnd: null };
+    // Use first (or most significant) nap
+    const nap = child.naps[0];
+    const start = timeToMinutes(nap.start);
+    return { child, napStart: start, napEnd: start + nap.duration };
+  });
+}
+
+function computeMultiChildTension(children) {
+  const napWindows = computeNapWindows(children).filter(w => w.napStart !== null);
+  if (napWindows.length < 2) return null;
+
+  // Find overlap
+  let overlapStart = napWindows[0].napStart;
+  let overlapEnd   = napWindows[0].napEnd;
+  for (const w of napWindows.slice(1)) {
+    overlapStart = Math.max(overlapStart, w.napStart);
+    overlapEnd   = Math.min(overlapEnd, w.napEnd);
+  }
+  const hasOverlap = overlapEnd > overlapStart;
+
+  return {
+    hasOverlap,
+    overlapStart: hasOverlap ? overlapStart : null,
+    overlapEnd:   hasOverlap ? overlapEnd   : null,
+    napWindows,
+  };
+}
+
+let priorityChildIndex = -1; // -1 = balance
+
+function setPriority(idx) {
+  priorityChildIndex = idx;
+  document.querySelectorAll('.priority-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', i === idx + 1 || (idx === -1 && i === 0));
+  });
+  // Re-run analysis with same data
+  if (window._lastAnalysisData) {
+    const windows = generateFlightWindows(window._lastAnalysisData);
+    const allWindows = [];
+    for (let depMin = 300; depMin <= 1410; depMin += 30) {
+      allWindows.push({ depMin, ...scoreWindow(depMin, window._lastAnalysisData) });
+    }
+    const container = document.getElementById('results-container');
+    container.innerHTML = '';
+    windows.forEach((result, i) => container.appendChild(buildWindowCard(result, i + 1, window._lastAnalysisData)));
+    renderExploreTimeline(allWindows, window._lastAnalysisData);
+  }
+}
+
+function renderTensionSection(data) {
+  const container = document.getElementById('tension-container');
+  if (!container) return;
+  if (data.children.length < 2) { container.innerHTML = ''; return; }
+
+  const tension = computeMultiChildTension(data.children);
+  if (!tension) { container.innerHTML = ''; return; }
+
+  const names = data.children.map(c => c.name);
+  let bodyText = '';
+  if (tension.hasOverlap) {
+    bodyText = `Both children share a nap window overlap: <strong>${minutesToTime(tension.overlapStart)}–${minutesToTime(tension.overlapEnd)}</strong>. Flights departing just before this window give the best chance of sleep for both.`;
+  } else {
+    bodyText = `Your children's nap windows don't overlap. We've weighted toward the <strong>younger child</strong> since their sleep needs are more acute. Use the toggle below to override.`;
+  }
+
+  const priorityLabels = ['Balance both', ...names];
+  container.innerHTML = `
+    <div class="tension-section">
+      <div class="tension-title">Balancing ${names.join(' & ')}</div>
+      <div class="tension-body">${bodyText}</div>
+      <div class="priority-toggle">
+        ${priorityLabels.map((label, i) => `
+          <button class="priority-btn ${i === 0 ? 'active' : ''}" onclick="setPriority(${i - 1})">${label}</button>
+        `).join('')}
+      </div>
+    </div>`;
+}
+
+function getChildNapOverlapMinutes(child, depMin, flightDuration) {
+  if (!child.naps || !child.naps.length) return 0;
+  let total = 0;
+  child.naps.forEach(nap => {
+    const napStart = timeToMinutes(nap.start);
+    const napEnd   = napStart + nap.duration;
+    const flightEnd = depMin + flightDuration;
+    const overlapStart = Math.max(napStart, depMin);
+    const overlapEnd   = Math.min(napEnd, flightEnd);
+    if (overlapEnd > overlapStart) total += (overlapEnd - overlapStart);
+  });
+  return total;
+}
+
+function renderChildIndicators(child, depMin, flightDuration) {
+  const overlap = getChildNapOverlapMinutes(child, depMin, flightDuration);
+  const totalNap = (child.naps || []).reduce((sum, n) => sum + n.duration, 0);
+  if (!totalNap) return '';
+  const ratio = overlap / totalNap;
+  const cls  = ratio >= 0.5 ? 'ind-great' : ratio > 0 ? 'ind-partial' : 'ind-none';
+  const icon = ratio >= 0.5 ? '✅' : ratio > 0 ? '⚠️' : '❌';
+  return `<span class="child-ind-badge ${cls}">${icon} ${child.name}</span>`;
+}
+
+// ============ LIVE FLIGHT FETCH ============
+async function fetchLiveFlights(depIata, arrIata, flightDate) {
+  const url = `/api/flights?dep_iata=${depIata}&arr_iata=${arrIata}&flight_date=${flightDate}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (!json.data || !Array.isArray(json.data) || !json.data.length) return null;
+    // Extract relevant fields
+    return json.data.map(f => ({
+      airline:    f.airline?.name || 'Unknown airline',
+      flightNum:  f.flight?.iata  || '',
+      depSched:   f.departure?.scheduled || null,
+      arrSched:   f.arrival?.scheduled   || null,
+      status:     f.flight_status || '',
+    })).filter(f => f.depSched && f.arrSched);
+  } catch (err) {
+    clearTimeout(timeout);
+    console.warn('NapNav: live flight fetch failed', err);
+    return null;
+  }
+}
+
+function parseISOToMinutes(isoStr) {
+  // Returns minutes since midnight in local time (strips tz, uses wall clock)
+  if (!isoStr) return null;
+  const d = new Date(isoStr);
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function parseISODurationMinutes(depISO, arrISO) {
+  if (!depISO || !arrISO) return null;
+  return Math.round((new Date(arrISO) - new Date(depISO)) / 60000);
+}
+
+// ============ HERO RECOMMENDATION CARD ============
+function buildHeroCard(ranked, data) {
+  const container = document.getElementById('hero-rec-container');
+  if (!container) return;
+  if (!ranked || !ranked.length) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const best = ranked[0];
+  const child = data.children[0];
+  const depA  = lookupAirport(data.trip.depAirport);
+  const arrA  = lookupAirport(data.trip.arrAirport);
+
+  // If score is very low, show neutral fallback
+  if (best.score < 30) {
+    container.innerHTML = `
+      <div class="hero-rec-card hero-rec-neutral">
+        <div class="hero-rec-icon">✈️</div>
+        <div class="hero-rec-title">We weren't able to find a clearly optimal window</div>
+        <div class="hero-rec-body">See the full breakdown below for your best available options.</div>
+      </div>`;
+    return;
+  }
+
+  const windowStart = best.depMin - 60;
+  const windowEnd   = best.depMin + 60;
+  const arrLocalText = minutesToTime(best.hotelDestClock) + (best.isNextDayPlus ? ' next day' : '');
+
+  // Body clock arrival time
+  const bodyClockAtHotel = ((best.hotelArriveDest - data.tzDiffMinutes) % 1440 + 1440) % 1440;
+  const bodyClockText = minutesToTime(bodyClockAtHotel);
+
+  let napContext = '';
+  if (child.naps && child.naps.length) {
+    const nap = child.naps[0];
+    const napStartM = timeToMinutes(nap.start);
+    const napEndM   = napStartM + nap.duration;
+    const overlapMins = getChildNapOverlapMinutes(child, best.depMin, data.flightDuration);
+    if (overlapMins > 15) {
+      const intoFlight = napStartM - best.depMin;
+      const intoLabel  = intoFlight > 0
+        ? `about ${Math.round(intoFlight / 60 * 10) / 10}h into the flight`
+        : 'right at takeoff';
+      napContext = `<strong>${child.name}</strong> will hit their natural nap window ${intoLabel}. `;
+    }
+  }
+
+  const destCity = arrA ? arrA.city.split(',')[0] : 'your destination';
+
+  container.innerHTML = `
+    <div class="hero-rec-card">
+      <div class="hero-rec-icon">✈️</div>
+      <div class="hero-rec-title">Best departure window: ${minutesToTime(windowStart)} – ${minutesToTime(windowEnd)}</div>
+      <div class="hero-rec-body">
+        ${napContext}Expected arrival in ${destCity}: <strong>${arrLocalText} local time</strong> (${bodyClockText} body clock).
+        ${data.tzDiffMinutes !== 0 ? `Their body is still on home time — plan accordingly on arrival day.` : `No timezone adjustment needed.`}
+      </div>
+    </div>`;
+}
+
+// ============ SCORING FAQ ============
+function renderScoringFaq() {
+  const inner = document.getElementById('faq-panel-inner');
+  if (!inner) return;
+  inner.innerHTML = `
+    <h4>How NapNav scores your flights</h4>
+    <p>NapNav scores each flight from 0–100 based on how well it aligns with your child's biological needs.</p>
+
+    <h4>🕐 Nap Window Overlap (up to ~40 pts)</h4>
+    <p>The biggest factor. We calculate how many minutes of your child's natural nap window fall during the flight. A flight that departs 30 minutes before nap time and lands after it ends scores highest here.</p>
+
+    <h4>🌍 Body Clock vs. Local Time at Landing (up to ~20 pts)</h4>
+    <p>Your child's body doesn't know what time zone you've landed in. We calculate what time it feels like to them when you arrive. Landing at 3pm locally but 9pm body-clock time means an overtired child at your destination. Eastward travel is harder — the body resists staying up later. Expect roughly 1 day of adjustment per time zone crossed.</p>
+
+    <h4>😴 Bedtime Proximity at Landing (up to ~15 pts)</h4>
+    <p>Arriving within 1–2 hours of your child's bedtime (body clock) is a bonus — they'll be naturally tired and ready to sleep at the destination.</p>
+
+    <h4>⏱ Flight Duration vs. Nap Duration (up to ~15 pts)</h4>
+    <p>A nap requires ~15–20 min to fall asleep plus the full nap duration. If your flight is shorter than your child's nap needs, we reflect that.</p>
+
+    <h4>🧳 Logistics Buffer (up to ~10 pts)</h4>
+    <p>We account for your airport drive time, TSA wait (adjusted for PreCheck), stroller time, bags, and ground transport at arrival.</p>
+
+    <h4>For multiple children:</h4>
+    <p>We score each child separately, then combine using age-weighted averages. Infants and young toddlers are weighted more heavily — their sleep is less flexible and more consequential when disrupted. Use the priority toggle to override.</p>
+
+    <h4>A note on certainty:</h4>
+    <p>Sleep science gives us the framework, but every child is different. NapNav gives you the best probabilistic answer — a well-informed starting point, not a guarantee.</p>
+  `;
+}
+
+function toggleFaq() {
+  const btn   = document.getElementById('faq-toggle-btn');
+  const panel = document.getElementById('faq-panel');
+  const open  = panel.classList.toggle('open');
+  btn.setAttribute('aria-expanded', open);
 }
 
 // ============ SCORING ENGINE ============
@@ -950,7 +1231,7 @@ function generateFlightWindows(data) {
 }
 
 // ============ RUN ANALYSIS ============
-function runAnalysis() {
+async function runAnalysis() {
   if (!selectedDurationMinutes) {
     alert('Please select your approximate flight duration.');
     return;
@@ -961,23 +1242,42 @@ function runAnalysis() {
   }
 
   const data    = collectFormData();
-  const windows = generateFlightWindows(data);
+  window._lastAnalysisData = data;
 
-  // Compute all 30-min windows for the explore timeline
+  // Show results section with spinner while we try to fetch live flights
+  document.getElementById('results-section').classList.remove('hidden');
+  document.getElementById('napnav-form').classList.add('hidden');
+  document.querySelector('.progress-container').classList.add('hidden');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  const resultsContainer = document.getElementById('results-container');
+  resultsContainer.innerHTML = `
+    <div class="loading-spinner-wrap">
+      <div class="spinner"></div>
+      <span>Looking up flights for ${lookupAirport(data.trip.depAirport)?.code || '?'} → ${lookupAirport(data.trip.arrAirport)?.code || '?'}${data.trip.depDate ? ' on ' + data.trip.depDate : ''}...</span>
+    </div>`;
+  document.getElementById('hero-rec-container').innerHTML = '';
+  document.getElementById('tension-container').innerHTML  = '';
+
+  // Attempt live flight fetch
+  let liveFlights = null;
+  const depA = lookupAirport(data.trip.depAirport);
+  const arrA = lookupAirport(data.trip.arrAirport);
+  if (depA && arrA && data.trip.depDate) {
+    liveFlights = await fetchLiveFlights(depA.code, arrA.code, data.trip.depDate);
+  }
+
+  const windows = generateFlightWindows(data);
   const allWindows = [];
   for (let depMin = 300; depMin <= 1410; depMin += 30) {
     allWindows.push({ depMin, ...scoreWindow(depMin, data) });
   }
 
-  renderResults(windows, data, allWindows);
-  document.getElementById('results-section').classList.remove('hidden');
-  document.getElementById('napnav-form').classList.add('hidden');
-  document.querySelector('.progress-container').classList.add('hidden');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  renderResults(windows, data, allWindows, liveFlights);
 }
 
 // ============ RENDER RESULTS ============
-function renderResults(ranked, data, allWindows) {
+function renderResults(ranked, data, allWindows, liveFlights) {
   const container = document.getElementById('results-container');
   container.innerHTML = '';
 
@@ -988,7 +1288,43 @@ function renderResults(ranked, data, allWindows) {
   document.getElementById('results-subtitle').textContent =
     `${ranked.length} best departure windows for ${childNames} — ${route}`;
 
-  ranked.forEach((result, i) => container.appendChild(buildWindowCard(result, i + 1, data)));
+  // Hero card
+  buildHeroCard(ranked, data);
+
+  // Scoring FAQ
+  renderScoringFaq();
+
+  // Multi-child tension
+  renderTensionSection(data);
+
+  // Live flight notice / results
+  const noticeContainer = document.getElementById('live-flight-notice-container');
+  if (noticeContainer) noticeContainer.innerHTML = '';
+
+  if (liveFlights && liveFlights.length) {
+    // Score and render real flights
+    if (noticeContainer) {
+      noticeContainer.innerHTML = `<div class="live-flight-notice">✈️ Showing <strong>${liveFlights.length} live flight${liveFlights.length !== 1 ? 's' : ''}</strong> for this route on ${data.trip.depDate}, scored by nap algorithm.</div>`;
+    }
+    const scoredFlights = liveFlights.map(f => {
+      const depMin  = parseISOToMinutes(f.depSched);
+      const durMins = parseISODurationMinutes(f.depSched, f.arrSched) || data.flightDuration;
+      const overrideData = { ...data, flightDuration: durMins };
+      const scored  = scoreWindow(depMin, overrideData);
+      return { ...f, depMin, durMins, ...scored };
+    }).sort((a, b) => b.score - a.score);
+
+    scoredFlights.forEach((f, i) => {
+      container.appendChild(buildLiveFlightCard(f, i + 1, data));
+    });
+  } else {
+    // Fallback: show hypothetical windows
+    if (liveFlights !== null && noticeContainer) {
+      noticeContainer.innerHTML = `<div class="live-flight-notice">Showing estimated windows — live flight data unavailable for this route</div>`;
+    }
+    ranked.forEach((result, i) => container.appendChild(buildWindowCard(result, i + 1, data)));
+  }
+
   renderChecklist(data);
   renderTips(data);
   renderExploreTimeline(allWindows, data);
@@ -1008,6 +1344,11 @@ function buildWindowCard(result, rank, data) {
   const durationLabel = `${hrs}h${mins > 0 ? ' ' + mins + 'm' : ''}`;
   const hotelArriveDisplay = `${minutesToTime(hotelDestClock)}${isNextDayPlus ? ' (+1 day)' : ''}`;
 
+  const sublabel = generateSublabel(score, positives, warnings);
+  const childInds = data.children.length > 1
+    ? `<div class="child-indicators">${data.children.map(c => renderChildIndicators(c, depMin, data.flightDuration)).join('')}</div>`
+    : '';
+
   const card = document.createElement('div');
   card.className = `result-card rank-${Math.min(rank, 3)}`;
   card.innerHTML = `
@@ -1020,6 +1361,7 @@ function buildWindowCard(result, rank, data) {
             Look for flights departing between<br>
             <strong>${minutesToTime(windowStart)} — ${minutesToTime(windowEnd)}</strong>
           </div>
+          ${childInds}
         </div>
       </div>
       <div class="score-display">
@@ -1031,6 +1373,7 @@ function buildWindowCard(result, rank, data) {
         <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">${scoreText}</div>
       </div>
     </div>
+    <div style="font-size:12px;font-style:italic;color:var(--text-muted);margin-bottom:12px;">${sublabel}</div>
 
     <div class="journey-summary">
       <div class="journey-step">
@@ -1078,6 +1421,63 @@ function buildWindowCard(result, rank, data) {
         ${warnings.length
           ? warnings.map(w => `<div class="insight-item"><span class="insight-icon">⚠️</span><span>${w.text}</span><span class="score-delta-badge delta-neg">${w.delta}</span></div>`).join('')
           : '<div class="insight-item"><span class="insight-icon">✅</span><span>No major concerns for this window</span></div>'}
+      </div>
+    </div>`;
+  return card;
+}
+
+function buildLiveFlightCard(flight, rank, data) {
+  const { score, positives, warnings, depMin, homeDepart, hotelDestClock, isNextDayPlus, durMins, airline, flightNum, depSched, arrSched } = flight;
+  const { text: scoreText, cls: scoreCls } = scoreLabel(score);
+  const sublabel = generateSublabel(score, positives, warnings);
+
+  const depTimeStr = depSched ? new Date(depSched).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : minutesToTime(depMin);
+  const arrTimeStr = arrSched ? new Date(arrSched).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—';
+  const hrs  = Math.floor(durMins / 60);
+  const mins = durMins % 60;
+  const durLabel = `${hrs}h${mins > 0 ? ' ' + mins + 'm' : ''}`;
+  const hotelDisplay = `${minutesToTime(hotelDestClock)}${isNextDayPlus ? ' (+1d)' : ''}`;
+
+  // Per-child indicators
+  const childInds = data.children.length > 1
+    ? `<div class="child-indicators">${data.children.map(c => renderChildIndicators(c, depMin, durMins)).join('')}</div>`
+    : '';
+
+  const card = document.createElement('div');
+  card.className = `live-flight-card rank-${Math.min(rank, 3)}`;
+  card.innerHTML = `
+    <div class="live-flight-header">
+      <div>
+        <div class="live-flight-airline">${airline}${flightNum ? ' · ' + flightNum : ''} ${rank === 1 ? '🥇' : ''}</div>
+        <div class="live-flight-times">
+          <span>${depTimeStr}</span>
+          <span class="live-flight-arrow">→</span>
+          <span>${arrTimeStr}</span>
+          <span class="live-flight-duration">${durLabel}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);">Hotel ~${hotelDisplay} · Leave home ~${homeDepart < 0 ? '⚠️ midnight' : minutesToTime(homeDepart)}</div>
+        ${childInds}
+      </div>
+      <div class="score-display">
+        <div class="score-number score-${scoreCls}">${score}</div>
+        <div class="score-label">Nap Score</div>
+        <div class="score-bar-wrap"><div class="score-bar-fill fill-${scoreCls}" style="width:${score}%"></div></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;font-weight:600;">${scoreText}</div>
+      </div>
+    </div>
+    <div style="font-size:12px;font-style:italic;color:var(--text-muted);margin-bottom:10px;">${sublabel}</div>
+    <div class="insights-grid">
+      <div class="insights-col">
+        <h4 style="color:var(--success);">✓ Why This Works</h4>
+        ${positives.length
+          ? positives.map(p => `<div class="insight-item"><span class="insight-icon">✅</span><span>${p.text}</span></div>`).join('')
+          : '<div class="insight-item"><span style="color:var(--text-muted)">No standout positives</span></div>'}
+      </div>
+      <div class="insights-col">
+        <h4 style="color:var(--warning);">⚠ Watch Out For</h4>
+        ${warnings.length
+          ? warnings.map(w => `<div class="insight-item"><span class="insight-icon">⚠️</span><span>${w.text}</span></div>`).join('')
+          : '<div class="insight-item"><span class="insight-icon">✅</span><span>No major concerns</span></div>'}
       </div>
     </div>`;
   return card;
@@ -1213,8 +1613,39 @@ function renderChecklist(data) {
     { text: 'Pack a change of clothes for each child in the carry-on (minimum)', urgent: false },
   ];
   if (logistics.stroller === 'gate-check') airportItems.push({ text: 'Gate-check stroller at the jet bridge door — ask for a tag immediately on boarding', urgent: false });
-  if (logistics.carSeat  === 'plane')      airportItems.push({ text: 'Car seat on plane: FAA-approved only — book a separate seat (recommended for under 2)', urgent: true });
+  if (logistics.stroller === 'gate-check') airportItems.push({ text: 'Request a gate check bag from the airline to protect the seat', urgent: false });
+  if (logistics.stroller === 'gate-check') airportItems.push({ text: 'Tag your stroller with your name and phone number in case it\'s misrouted', urgent: false });
+  if (logistics.carSeat  === 'plane')      airportItems.push({ text: 'Car seat on plane: FAA-approved only — book a separate window seat (car seats cannot go in aisle seats)', urgent: true });
+  if (logistics.carSeat  === 'gate-check') airportItems.push({ text: 'Request a gate check bag to protect your car seat', urgent: false });
+  if (numChildren > 1) airportItems.push({ text: 'Board early — airlines typically board families with young children before general boarding. Confirm with your airline.', urgent: false });
   sections.push({ title: 'Airport Day', items: airportItems });
+
+  // Long flight items
+  const flightHrs = data.flightDuration / 60;
+  if (flightHrs >= 6) {
+    sections.push({ title: 'Long-Haul Preparation (6+ hours)', items: [
+      { text: 'Request a bassinet/bulkhead seat at booking — call the airline directly, limited availability', urgent: true },
+      { text: 'Pack a full change of clothes per child in carry-on (and one for yourself)', urgent: true },
+    ]});
+  }
+
+  // Infant-specific items
+  const hasInfantForChecklist = children.some(c => ['0-3mo','3-6mo','6-9mo','9-12mo'].includes(c.age));
+  if (hasInfantForChecklist) {
+    sections.push({ title: 'Infant Travel', items: [
+      { text: 'Pack formula/milk for flight duration + 2 hours buffer', urgent: true },
+      { text: 'Nursing or feeding during takeoff and landing reduces ear pressure', urgent: false },
+      { text: 'TSA allows formula and breast milk over 3oz — declare at checkpoint', urgent: false },
+    ]});
+  }
+
+  // Redeye + young child
+  const hasYoungChild = children.some(c => ['0-3mo','3-6mo','6-9mo','9-12mo','12-18mo','18-24mo','2-3yr'].includes(c.age));
+  if (data.redeyeOk && hasYoungChild) {
+    sections.push({ title: 'Overnight Flight Tips', items: [
+      { text: 'Keep the pre-flight routine identical to your home bedtime — same book, same song, same words', urgent: false },
+    ]});
+  }
 
   const tzAbsH = Math.abs(tzDiff) / 60;
   if (tzAbsH >= 2) {
@@ -1226,6 +1657,12 @@ function renderChecklist(data) {
       { text: 'Keep your exact bedtime routine (bath → PJs → book → song → sleep) in the hotel', urgent: false },
       ...(tzDiff > 0 ? [{ text: 'Eastward: avoid bright light in the late evening on arrival — it delays adjustment', urgent: false }] : []),
     ]});
+    if (tzAbsH > 3) {
+      sections.push({ title: 'Pre-Departure Schedule Shift', items: [
+        { text: 'Shift nap time by 15 minutes per day, 3–4 days before departure', urgent: false },
+        { text: 'Expose your child to natural light at the destination\'s morning time on arrival day — fastest reset for the body clock', urgent: false },
+      ]});
+    }
   }
 
   document.getElementById('checklist-container').innerHTML = sections.map(s => `
@@ -1289,5 +1726,11 @@ function startOver() {
   document.getElementById('results-section').classList.add('hidden');
   document.getElementById('napnav-form').classList.remove('hidden');
   document.querySelector('.progress-container').classList.remove('hidden');
+  document.getElementById('hero-rec-container').innerHTML = '';
+  document.getElementById('tension-container').innerHTML  = '';
+  const noticeEl = document.getElementById('live-flight-notice-container');
+  if (noticeEl) noticeEl.innerHTML = '';
+  priorityChildIndex = -1;
+  window._lastAnalysisData = null;
   goToStep(1);
 }
