@@ -1325,9 +1325,87 @@ function renderResults(ranked, data, allWindows, liveFlights) {
     ranked.forEach((result, i) => container.appendChild(buildWindowCard(result, i + 1, data)));
   }
 
+  renderCompromiseTips(ranked, data);
   renderChecklist(data);
   renderTips(data);
   renderExploreTimeline(allWindows, data);
+}
+
+// ============ COMPROMISE TIPS ============
+function renderCompromiseTips(ranked, data) {
+  const container = document.getElementById('compromise-tips-container');
+  if (!container) return;
+
+  const best = ranked[0];
+  if (!best || best.score >= 60) { container.innerHTML = ''; return; }
+
+  const tips = [];
+  const warnTexts = best.warnings.map(w => w.text.toLowerCase());
+  const children  = data.children;
+  const hasInfant = children.some(c => ['0-3mo','3-6mo','6-9mo','9-12mo'].includes(c.age));
+
+  // Map each common warning pattern to a concrete mitigation tip
+  if (warnTexts.some(t => t.includes('mid-') && t.includes('nap'))) {
+    tips.push({ icon: '😴', text: 'Departure falls mid-nap: try to let your child finish the nap in the car on the way to the airport, or push the nap 30–45 minutes earlier that morning to clear the window.' });
+  }
+  if (warnTexts.some(t => t.includes('drive to airport overlaps'))) {
+    tips.push({ icon: '🚗', text: 'The drive to the airport overlaps nap time: lean into it — darken the windows, run white noise, and treat the car ride as the nap. Arrive a little early and let them sleep until you have to move.' });
+  }
+  if (warnTexts.some(t => t.includes('boards somewhat tired'))) {
+    tips.push({ icon: '☕', text: 'Child will board tired: front-load feeding and keep stimulation low in the terminal. Avoid play areas right before boarding — they rev kids up. A quiet snack and a lap is better.' });
+  }
+  if (warnTexts.some(t => t.includes('past bedtime'))) {
+    tips.push({ icon: '🌙', text: 'Arriving past bedtime: keep the car/Uber as dark and quiet as possible after landing — treat it like a wind-down, not an adventure. Skip hotel exploration and go straight to the sleep setup.' });
+    tips.push({ icon: '🏨', text: 'Pre-set the room before you land if possible: request early check-in, ask hotel staff to close the blackout curtains and pre-run a fan or white noise machine. One less thing to scramble for at midnight.' });
+  }
+  if (warnTexts.some(t => t.includes('close to bedtime'))) {
+    tips.push({ icon: '⏱', text: 'Cutting it close to bedtime: unpack only what you need for the first night. Everything else can wait until morning. The single most important task on check-in is getting the sleep environment ready.' });
+  }
+  if (warnTexts.some(t => t.includes('late-night hotel arrival'))) {
+    tips.push({ icon: '🌙', text: 'Very late arrival: consider feeding your child in the car so you can move straight from car seat to pack-n-play. A full belly after a long travel day often overrides the chaos of a new room.' });
+  }
+  if (warnTexts.some(t => t.includes('very early') || t.includes('middle of the night home'))) {
+    tips.push({ icon: '🌅', text: 'Very early departure: pack everything the night before — including the carry-on, snacks, and the stroller. Middle-of-night mornings fall apart when you\'re hunting for the sound machine at 4am.' });
+    tips.push({ icon: '💤', text: 'Some children will fall back asleep in the car or at the gate for early departures. Bring a travel pillow or carrier and don\'t fight it — a gate nap can reset the whole day.' });
+  }
+  if (warnTexts.some(t => t.includes('redeye') && t.includes('prefer to avoid'))) {
+    tips.push({ icon: '✈️', text: 'If you end up on a redeye anyway: replicate your exact bedtime routine at the gate — pajamas, sleep sack, the usual book or song. The ritual is the signal, not the location.' });
+  }
+  if (warnTexts.some(t => t.includes('body clock') && t.includes('morning'))) {
+    tips.push({ icon: '☀️', text: 'Body clock mismatch on arrival: get outside in morning light at the destination as early as possible on day 1 — even 20 minutes resets the clock faster than anything else.' });
+  }
+  if (warnTexts.some(t => t.includes('body clock') && t.includes('bedtime at midday'))) {
+    tips.push({ icon: '🛏', text: 'Their body will want to crash at midday: resist a full sleep — keep them up with outdoor activity and bright light until as close to local bedtime as you can. A long nap will push bedtime to 3am.' });
+  }
+  if (warnTexts.some(t => t.includes('overtired'))) {
+    tips.push({ icon: '🎒', text: 'Expect an overtired, dysregulated child on the plane: load the carry-on with new small toys to reveal one at a time. Novelty is the best distraction. Avoid screens until you need the nuclear option.' });
+  }
+  if (hasInfant && best.score < 45) {
+    tips.push({ icon: '👶', text: 'For infants on a tough travel day: a carrier or wrap is your best friend. Upright motion often soothes where nothing else will — and frees your hands for boarding and stowing bags.' });
+  }
+
+  // Generic tip if nothing specific matched but score is still low
+  if (!tips.length) {
+    tips.push({ icon: '🧘', text: 'No flight option is ideal for sleep on this route and date. Accept that this will be a harder travel day and over-prepare your carry-on: extra snacks, comfort items, and one or two new small toys as distractions.' });
+  }
+
+  container.innerHTML = `
+    <div class="compromise-card">
+      <div class="compromise-header">
+        <span class="compromise-icon">⚠️</span>
+        <div>
+          <div class="compromise-title">Your best option scores ${best.score}/100 — here's how to make it work</div>
+          <div class="compromise-subtitle">No ideal window exists for this trip. These tips help minimize the impact.</div>
+        </div>
+      </div>
+      <ul class="compromise-list">
+        ${tips.map(t => `
+          <li class="compromise-tip">
+            <span class="compromise-tip-icon">${t.icon}</span>
+            <span>${t.text}</span>
+          </li>`).join('')}
+      </ul>
+    </div>`;
 }
 
 function buildWindowCard(result, rank, data) {
@@ -1737,6 +1815,7 @@ function startOver() {
   document.querySelector('.intro-banner')?.classList.remove('hidden');
   document.getElementById('hero-rec-container').innerHTML = '';
   document.getElementById('tension-container').innerHTML  = '';
+  document.getElementById('compromise-tips-container').innerHTML = '';
   const noticeEl = document.getElementById('live-flight-notice-container');
   if (noticeEl) noticeEl.innerHTML = '';
   priorityChildIndex = -1;
