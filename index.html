@@ -182,11 +182,14 @@
               </select>
             </div>
             <div class="field-group">
-              <label class="field-label">TSA PreCheck or Global Entry?</label>
-              <select class="field-input" id="tsa-precheck">
-                <option value="no" selected>No</option>
-                <option value="yes">Yes</option>
+              <label class="field-label">How early do you arrive at the airport?</label>
+              <select class="field-input" id="airport-buffer">
+                <option value="90">1.5 hours before (PreCheck, light bags)</option>
+                <option value="120" selected>2 hours before (standard domestic)</option>
+                <option value="150">2.5 hours before (busy airport / young kids)</option>
+                <option value="180">3 hours before (international or just cautious)</option>
               </select>
+              <p class="field-hint">Covers security, boarding, and any setup time. When in doubt, go longer.</p>
             </div>
           </div>
 

@@ -671,7 +671,7 @@ function collectFormData() {
     },
     logistics: {
       driveToAirport:   parseInt(document.getElementById('drive-to-airport')?.value  || '45'),
-      tsaPrecheck:      document.getElementById('tsa-precheck')?.value    || 'no',
+      airportBuffer:    parseInt(document.getElementById('airport-buffer')?.value    || '120'),
       carSeat:          document.getElementById('car-seat')?.value        || 'none',
       stroller:         document.getElementById('stroller')?.value        || 'none',
       bags:             parseInt(document.getElementById('bags')?.value   || '2'),
@@ -994,11 +994,10 @@ function scoreWindow(depMin, data) {
   const { logistics, flightDuration, tzDiffMinutes: tzDiff } = data;
 
   // --- PRE-FLIGHT BUFFERS (all in origin-timezone minutes) ---
-  const secBuf      = logistics.tsaPrecheck === 'yes' ? 60 : 90;
-  const strollerBuf = logistics.stroller    === 'gate-check' ? 15 : 0;
-  const bagBuf      = logistics.bags > 0 ? 15 : 0;
-  const boardBuf    = 30;
-  const homeDepart  = depMin - logistics.driveToAirport - secBuf - strollerBuf - bagBuf - boardBuf;
+  // airportBuffer = user-selected time to spend at airport before departure (covers security + boarding)
+  const strollerBuf = logistics.stroller === 'gate-check' ? 15 : 0;
+  const airportArrival = depMin - logistics.airportBuffer; // when they need to be at the airport
+  const homeDepart     = airportArrival - logistics.driveToAirport - strollerBuf;
 
   // --- ARRIVAL TIMES ---
   // arrLocalDest: departure (origin local) + flight duration + timezone shift
@@ -1207,7 +1206,7 @@ function scoreWindow(depMin, data) {
   }
 
   score = Math.max(0, Math.min(100, score));
-  return { score, positives, warnings, breakdown, homeDepart, hotelArriveDest, hotelDestClock, arrLocalDest, isNextDayPlus };
+  return { score, positives, warnings, breakdown, homeDepart, airportArrival, hotelArriveDest, hotelDestClock, arrLocalDest, isNextDayPlus };
 }
 
 // ============ GENERATE WINDOWS ============
@@ -1332,7 +1331,7 @@ function renderResults(ranked, data, allWindows, liveFlights) {
 }
 
 function buildWindowCard(result, rank, data) {
-  const { score, positives, warnings, depMin, homeDepart, hotelArriveDest, hotelDestClock, isNextDayPlus } = result;
+  const { score, positives, warnings, depMin, homeDepart, airportArrival, hotelArriveDest, hotelDestClock, isNextDayPlus } = result;
   const { text: scoreText, cls: scoreCls } = scoreLabel(score);
   const medals     = ['🥇','🥈','🥉','4th','5th'];
   const rankLabels = ['Best Window','Second Choice','Third Choice','Fourth Choice','Fifth Choice'];
@@ -1381,7 +1380,15 @@ function buildWindowCard(result, rank, data) {
         <span class="journey-icon">🏠</span>
         <div>
           <div class="journey-label">Leave Home</div>
-          <div class="journey-time">${homeDepart < 0 ? '⚠️ Middle of night' : minutesToTime(homeDepart)}</div>
+          <div class="journey-time">${homeDepart < 0 ? '⚠️ Midnight' : minutesToTime(homeDepart)}</div>
+        </div>
+      </div>
+      <div class="journey-arrow">→</div>
+      <div class="journey-step">
+        <span class="journey-icon">🛂</span>
+        <div>
+          <div class="journey-label">At Airport</div>
+          <div class="journey-time">${minutesToTime(airportArrival)}</div>
         </div>
       </div>
       <div class="journey-arrow">→</div>
@@ -1428,7 +1435,7 @@ function buildWindowCard(result, rank, data) {
 }
 
 function buildLiveFlightCard(flight, rank, data) {
-  const { score, positives, warnings, depMin, homeDepart, hotelDestClock, isNextDayPlus, durMins, airline, flightNum, depSched, arrSched } = flight;
+  const { score, positives, warnings, depMin, homeDepart, airportArrival, hotelDestClock, isNextDayPlus, durMins, airline, flightNum, depSched, arrSched } = flight;
   const { text: scoreText, cls: scoreCls } = scoreLabel(score);
   const sublabel = generateSublabel(score, positives, warnings);
 
@@ -1456,7 +1463,7 @@ function buildLiveFlightCard(flight, rank, data) {
           <span>${arrTimeStr}</span>
           <span class="live-flight-duration">${durLabel}</span>
         </div>
-        <div style="font-size:12px;color:var(--text-muted);">Hotel ~${hotelDisplay} · Leave home ~${homeDepart < 0 ? '⚠️ midnight' : minutesToTime(homeDepart)}</div>
+        <div style="font-size:12px;color:var(--text-muted);">Leave home ~${homeDepart < 0 ? '⚠️ midnight' : minutesToTime(homeDepart)} · Airport by ${minutesToTime(airportArrival)} · Hotel ~${hotelDisplay}</div>
         ${childInds}
       </div>
       <div class="score-display">
@@ -1542,7 +1549,7 @@ function showWindowDetail(depMin, data, allWindows) {
   const panel = document.getElementById('explore-detail-panel');
   const windowStart = depMin - 60;
   const windowEnd   = depMin + 60;
-  const { score, positives, warnings, homeDepart, hotelArriveDest, hotelDestClock, isNextDayPlus } = result;
+  const { score, positives, warnings, homeDepart, airportArrival, hotelArriveDest, hotelDestClock, isNextDayPlus } = result;
   const { text: scoreText, cls: scoreCls } = scoreLabel(score);
   const hotelDisplay = `${minutesToTime(hotelDestClock)}${isNextDayPlus ? ' (+1 day)' : ''}`;
   const flightHrs = Math.floor(data.flightDuration / 60);
@@ -1553,7 +1560,7 @@ function showWindowDetail(depMin, data, allWindows) {
       <div class="explore-detail-header">
         <div>
           <div class="explore-detail-time">${minutesToTime(windowStart)} — ${minutesToTime(windowEnd)}</div>
-          <div class="explore-detail-sub">Leave home ~${homeDepart < 0 ? '⚠️ middle of night' : minutesToTime(homeDepart)} &nbsp;·&nbsp; Hotel ~${hotelDisplay}</div>
+          <div class="explore-detail-sub">Leave home ~${homeDepart < 0 ? '⚠️ middle of night' : minutesToTime(homeDepart)} &nbsp;·&nbsp; Airport by ${minutesToTime(airportArrival)} &nbsp;·&nbsp; Hotel ~${hotelDisplay}</div>
         </div>
         <div class="score-display">
           <div class="score-number score-${scoreCls}">${score}</div>
